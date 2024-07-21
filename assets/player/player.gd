@@ -1,22 +1,51 @@
 extends CharacterBody3D
 
 
-# Called when the node enters the scene tree for the first time.
+func pause():
+	Global.variables["pause"] = !Global.variables["pause"]
+	if Global.variables["pause"]:
+		add_child(load("res://assets/pause menu/pause_menu.tscn").instantiate())
+		Input.set_mouse_mode(Input.MOUSE_MODE_VISIBLE)
+		
+	elif has_node("PauseMenu"):
+		remove_child($PauseMenu)
+		Input.set_mouse_mode(Input.MOUSE_MODE_CAPTURED)
+		
+
+var last_safe_position = Vector3.ZERO
+
+func go_last_safe_pos():
+	position = last_safe_position
+	
+func set_last_safe_pos():
+	last_safe_position = position
+
 func _ready():
+	remove_child($PauseMenu)
 	Input.set_mouse_mode(Input.MOUSE_MODE_CAPTURED)
+	set_last_safe_pos()
 
-
+@export var wall_jump_power = 12.0
+@export var wall_jumps_per_jump = 1
+var wall_jumps_remaining = 1
 @export var jump_power = 12.0
 @export var gravity = 9.8
 var jump_current_power = 0.0
 
-@export var mouse_sensitivity = 12.0
-@export var joystick_sensitivity = 12.0
+@export var air_reduction_speed = 2.0
+var extra_air_speed = Vector3.ZERO
+func process_air_speed(delta):
+	if extra_air_speed.length() > 0:
+		var reduction = air_reduction_speed * delta
+		if extra_air_speed.length() <= reduction:
+			extra_air_speed = Vector3.ZERO
+		else:
+			extra_air_speed -= extra_air_speed.normalized() * reduction
 
 var mouse_movement = Vector2.ZERO
 func _input(event):
 	if event is InputEventMouseMotion:
-		mouse_movement = -event.relative * mouse_sensitivity
+		mouse_movement = -event.relative * Global.variables["mouse_sensitivity"]
 		mouse_movement.x = mouse_movement.x
 	else:
 		mouse_movement = Vector2.ZERO
@@ -28,8 +57,8 @@ func look_around(delta):
 	var rootX = $cameraRootY/cameraRootX
 	
 	var joystick_movement = Vector2.ZERO
-	joystick_movement.x = Input.get_axis("look_left","look_right") * joystick_sensitivity
-	joystick_movement.y = Input.get_axis("look_up","look_down") * joystick_sensitivity
+	joystick_movement.x = -Input.get_axis("look_left","look_right") * Global.variables["joystick_sensitivity"]
+	joystick_movement.y = -Input.get_axis("look_up","look_down") * Global.variables["joystick_sensitivity"]
 	
 	var rot_degres = Vector2.ZERO
 	rot_degres.x = rad_to_deg(rootX.rotation.x)
@@ -58,8 +87,10 @@ func make_display_model_look(movement_direction,camera_direction):
 		display_model.look_at(target_position, Vector3.UP)
 	else:
 		var target_position = display_model.global_transform.origin + movement_direction
-		display_model.look_at(target_position, Vector3.UP)
-	
+		if display_model.global_transform.origin != target_position:
+			display_model.look_at(target_position, Vector3.UP)
+
+
 
 func move(delta):
 	var move_input := Vector3.ZERO
@@ -78,35 +109,58 @@ func move(delta):
 	else:
 		velocity = normalized_direction * 1200.0 * delta
 	
+	
+	
+	
 	make_display_model_look(movement_direction,-forward_direction.normalized())
 	
 	var hit_floor = $ShapeCast3Dfloor.is_colliding()
 	if hit_floor and jump_current_power <= 0:
+		
 		jump_current_power = 0
+		wall_jumps_remaining = wall_jumps_per_jump
 		$ShapeCast3Dceling.enabled = true
 			
-		if Input.get_action_strength("jump") > 0.0:
+		if Input.is_action_just_pressed("jump"):
 			jump_current_power = jump_power * 100
 			$AudioStreamPlayer.pitch_scale = RandomNumberGenerator.new().randf_range(0.75, 1.25)
 			$AudioStreamPlayer.play()
 	
 	
+	var wall_raycast = $displayModel/wallRaycast
+	if !hit_floor and Input.is_action_just_pressed("jump") and wall_raycast.is_colliding() and wall_jumps_remaining > 0:
+		wall_jumps_remaining -= 1
+		jump_current_power = jump_power * 100
+		$AudioStreamPlayer.pitch_scale = RandomNumberGenerator.new().randf_range(0.75, 1.25)
+		$AudioStreamPlayer.play()
+
+	
 	if $ShapeCast3Dceling.is_colliding():
 		$ShapeCast3Dceling.enabled = false
 		jump_current_power = 0
+		
+		
+	
 	
 	if jump_current_power != 0:
-		velocity.y = jump_current_power * delta
+		velocity.y = gravity +  jump_current_power * delta
 		
+	
+	
 	move_and_slide()
 	
+	process_air_speed(delta)
 	jump_current_power -= delta * (gravity * 100)
 	
 	
 
 func _process(delta):
-	look_around(delta)
-	move(delta)
+	if !Global.variables["pause"]:
+		look_around(delta)
+		move(delta)
 	
+	if Input.is_action_just_pressed("pause"):
+		pause()
+		
 	
 
