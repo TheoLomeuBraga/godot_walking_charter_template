@@ -81,7 +81,7 @@ func move(delta):
 	make_display_model_look(movement_direction,-forward_direction.normalized())
 	
 	var hit_floor = $ShapeCast3Dfloor.is_colliding()
-	if hit_floor:
+	if hit_floor and jump_current_power <= 0:
 		jump_current_power = 0
 		$ShapeCast3Dceling.enabled = true
 			
